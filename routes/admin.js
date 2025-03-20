@@ -1,110 +1,136 @@
 const { Router } = require("express");
 const adminRouter = Router();
-const { adminModel, courseModel } = require("../db")
+const { adminModel, courseModel } = require("../db");
 const jwt = require("jsonwebtoken");
 const { JWT_ADMIN_PASSWORD } = require("../config");
 const { adminMiddleware } = require("../middleware/admin");
+const { z } = require("zod");
 
-adminRouter.post("/signup", async function(req, res){
+// Validation schemas
+const signupSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6), // Ensure passwords have at least 6 characters
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+});
 
-    const { email, password, firstName, lastName } = req.body; //TODO: Adding zod validation
+const signinSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6),
+});
 
-    //TODO:hash the password so that we dont have to store the plain text password in the db
+const courseSchema = z.object({
+  title: z.string().min(3),
+  description: z.string().min(10),
+  imageUrl: z.string().url(),
+  price: z.number().min(0),
+});
 
-    //TODO: Put inside a try catch block
-    await adminModel.create({
-        email: email,
-        password: password,
-        firstName: firstName,
-        lastName: lastName
-    })
+const courseUpdateSchema = courseSchema.extend({
+  courseId: z.string(),
+});
 
-    res.json({
-        message:"signup succeeded"
-    })
-})
+// Middleware to validate request bodies
+function validate(schema) {
+  return (req, res, next) => {
+    const validationResult = schema.safeParse(req.body);
+    if (!validationResult.success) {
+      return res.status(400).json({ error: validationResult.error.errors });
+    }
+    next();
+  };
+}
 
-adminRouter.post("/signin", async function(req, res){
+// Routes with Zod validation
+adminRouter.post("/signup", validate(signupSchema), async function (req, res) {
+  const { email, password, firstName, lastName } = req.body;
 
-    const { email, password } = req.body;
+  try {
+    await adminModel.create({ email, password, firstName, lastName });
+    res.json({ message: "Signup succeeded" });
+  } catch (error) {
+    res.status(500).json({ message: "Error creating admin", error });
+  }
+});
 
-    //ideally the password is hashed so we can not compare the admin provided password and database password
-    const admin = await adminModel.findOne({
-        email: email,
-        password: password
-    });
+adminRouter.post("/signin", validate(signinSchema), async function (req, res) {
+  const { email, password } = req.body;
 
-    if(admin){
-        const token = jwt.sign({
-            id: admin._id
-        }, JWT_ADMIN_PASSWORD);
+  try {
+    const admin = await adminModel.findOne({ email, password });
 
-        //we can put cookie logic here 
+    if (admin) {
+      const token = jwt.sign({ id: admin._id }, JWT_ADMIN_PASSWORD);
+      res.json({ token });
+    } else {
+      res.status(403).json({ message: "Incorrect credentials" });
+    }
+  } catch (error) {
+    res.status(500).json({ message: "Error signing in", error });
+  }
+});
 
-        res.json({
-            token: token
-        })
-        
-    }else{
-        res.status(403).json({
-            message:"Incorrect credentials"
-        })
-    } 
-})
-
-adminRouter.post("/course", adminMiddleware, async function(req, res){
+adminRouter.post(
+  "/course",
+  adminMiddleware,
+  validate(courseSchema),
+  async function (req, res) {
     const adminId = req.userId;
-
     const { title, description, imageUrl, price } = req.body;
-    const course = await courseModel.create({
-        title: title,
-        description: description,
-        imageUrl: imageUrl,
-        price: price,
-        creatorId: adminId
-    })
 
-    res.json({
-        message:"course created",
-        courseId: course._id
-    })
-})
+    try {
+      const course = await courseModel.create({
+        title,
+        description,
+        imageUrl,
+        price,
+        creatorId: adminId,
+      });
+      res.json({ message: "Course created", courseId: course._id });
+    } catch (error) {
+      res.status(500).json({ message: "Error creating course", error });
+    }
+  }
+);
 
-adminRouter.put("/course", adminMiddleware, async function(req, res){
+adminRouter.put(
+  "/course",
+  adminMiddleware,
+  validate(courseUpdateSchema),
+  async function (req, res) {
     const adminId = req.userId;
-
     const { title, description, imageUrl, price, courseId } = req.body;
 
-    const course = await courseModel.updateOne({
-        _id: courseId,
-        creatorId: adminId
-    },{
-        title: title,
-        description: description,
-        imageUrl: imageUrl,
-        price: price,
-        creatorId: adminId
-    })
+    try {
+      const course = await courseModel.updateOne(
+        { _id: courseId, creatorId: adminId },
+        { title, description, imageUrl, price }
+      );
 
-    res.json({
-        message:"course updated",
-        courseId: course._id
-    })
-})
+      if (course.modifiedCount === 0) {
+        return res
+          .status(404)
+          .json({ message: "Course not found or not authorized to update" });
+      }
 
-adminRouter.get("/course/bulk", adminMiddleware, async function(req, res){
-    const adminId = req.userId;
+      res.json({ message: "Course updated", courseId });
+    } catch (error) {
+      res.status(500).json({ message: "Error updating course", error });
+    }
+  }
+);
 
-    const courses = await courseModel.find({
-        creatorId: adminId
-    });
+adminRouter.get("/course/bulk", adminMiddleware, async function (req, res) {
+  const adminId = req.userId;
 
-    res.json({
-        message:"All courses",
-        courses
-    })
-})
+  try {
+    const courses = await courseModel.find({ creatorId: adminId });
+    res.json({ message: "All courses", courses });
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching courses", error });
+  }
+});
 
 module.exports = {
-    adminRouter: adminRouter
-}
+  adminRouter,
+};
