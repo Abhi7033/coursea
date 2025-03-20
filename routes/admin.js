@@ -44,6 +44,7 @@ adminRouter.post("/signin", async function(req, res){
         res.json({
             token: token
         })
+        
     }else{
         res.status(403).json({
             message:"Incorrect credentials"
@@ -61,7 +62,6 @@ adminRouter.post("/course", adminMiddleware, async function(req, res){
         imageUrl: imageUrl,
         price: price,
         creatorId: adminId
-
     })
 
     res.json({
@@ -84,7 +84,6 @@ adminRouter.put("/course", adminMiddleware, async function(req, res){
         imageUrl: imageUrl,
         price: price,
         creatorId: adminId
-
     })
 
     res.json({

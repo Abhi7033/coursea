@@ -49,6 +49,7 @@ userRouter.post("/signin", async function(req, res){
         res.json({
             token: token
         })
+
     }else{
         res.status(403).json({
             message:"Incorrect credentials"
@@ -67,6 +68,7 @@ userRouter.get("/purchases", userMiddleware, async function(req, res){
     const courseData = await courseModel.find({
         _id: { $in: purchases.map(x => x.courseId) }
     })
+    
     res.json({
         purchases,
         courseData
