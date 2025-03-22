@@ -41,7 +41,7 @@ function validate(schema) {
   };
 }
 
-// Routes with Zod validation
+// Routes with Zod validation 
 adminRouter.post("/signup", validate(signupSchema), async function (req, res) {
   const { email, password, firstName, lastName } = req.body;
 
